@@ -1,5 +1,6 @@
 package one_mount.spring_batch_part1.batch;
 
+import lombok.AllArgsConstructor;
 import one_mount.spring_batch_part1.model.Employee;
 import one_mount.spring_batch_part1.repository.EmployeeRepository;
 import org.springframework.batch.core.Job;
@@ -23,8 +24,10 @@ import org.springframework.core.io.FileSystemResource;
 import org.springframework.transaction.PlatformTransactionManager;
 
 @Configuration
-@EnableBatchProcessing
+@AllArgsConstructor
+//@EnableBatchProcessing
 public class EmployeeBatchConfig {
+
 
 
     @Bean
