@@ -17,18 +17,22 @@ import org.springframework.batch.item.ItemWriter;
 import org.springframework.batch.item.file.FlatFileItemReader;
 import org.springframework.batch.item.file.mapping.DefaultLineMapper;
 import org.springframework.batch.item.file.transform.DelimitedLineTokenizer;
+import org.springframework.batch.item.validator.ValidationException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.FileSystemResource;
+import org.springframework.core.task.SimpleAsyncTaskExecutor;
 import org.springframework.transaction.PlatformTransactionManager;
+
+import java.math.BigDecimal;
 
 @Configuration
 @AllArgsConstructor
 //@EnableBatchProcessing
 public class EmployeeBatchConfig {
 
-
+    private EmployeeCodeGenerator employeeCodeGenerator;
 
     @Bean
     public Job importEmployeeJob(JobRepository jobRepository,
@@ -45,12 +49,18 @@ public class EmployeeBatchConfig {
                       PlatformTransactionManager transactionManager,
                       ItemReader<Employee> reader,
                       ItemProcessor<Employee, Employee> processor,
-                      ItemWriter<Employee> writer) {
+                      ItemWriter<Employee> writer,
+                      EmployeeSkipListener skipListener) {
         return new StepBuilder("step1", jobRepository)
                 .<Employee, Employee>chunk(10, transactionManager)
                 .reader(reader)
                 .processor(processor)
                 .writer(writer)
+                .faultTolerant()
+                .skip(ValidationException.class)
+                .skipLimit(Integer.MAX_VALUE)
+                .listener(skipListener)
+                .taskExecutor(new SimpleAsyncTaskExecutor()) // Parallel running
                 .build();
     }
 
@@ -60,13 +70,14 @@ public class EmployeeBatchConfig {
     public FlatFileItemReader<Employee> reader(
             @Value("#{jobParameters['filePath']}") String filePath) {
 
-        FlatFileItemReader<Employee> reader = new FlatFileItemReader<>();
-        reader.setResource(new FileSystemResource(filePath));
-        reader.setLinesToSkip(1); // skip header
-        reader.setLineMapper(new DefaultLineMapper<>() {{
+        FlatFileItemReader<Employee> tokenizer = new FlatFileItemReader<>();
+        tokenizer.setResource(new FileSystemResource(filePath));
+        tokenizer.setLinesToSkip(1); // skip header
+        tokenizer.setLineMapper(new DefaultLineMapper<>() {{
             setLineTokenizer(new DelimitedLineTokenizer() {{
                 setNames("name", "email", "department", "salary");
                 setDelimiter(",");
+                setIncludedFields(1,2,3,4);
             }});
             setFieldSetMapper(fieldSet -> {
                 Employee emp = new Employee();
@@ -77,14 +88,23 @@ public class EmployeeBatchConfig {
                 return emp;
             });
         }});
-        return reader;
+        return tokenizer;
     }
 
     @Bean
-    public ItemProcessor<Employee, Employee> processor() {
+    public ItemProcessor<Employee, Employee> processor(EmployeeRepository repository) {
         return employee -> {
+            if (employee.getSalary().compareTo(new BigDecimal("70000")) < 0) {
+                throw new ValidationException("Salary too low: " + employee.getSalary());
+            }
+            if (employee.getSalary().compareTo(new BigDecimal("90000")) > 0) {
+                throw new ValidationException("Salary too high: " + employee.getSalary());
+            }
             employee.setName(employee.getName().trim());
             employee.setEmail(employee.getEmail().toLowerCase());
+            Integer maxId = repository.findMaxEmployeeId(); // SELECT MAX(id) FROM employees
+            String newCode = employeeCodeGenerator.generateCode(maxId == null ? 0 : maxId);
+            employee.setEmployeeCode(newCode);
             return employee;
         };
     }

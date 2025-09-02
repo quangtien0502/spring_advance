@@ -11,15 +11,15 @@ import java.math.BigDecimal;
 @AllArgsConstructor
 @Builder
 @Entity
-@Table(name = "employees")
-public class Employee {
+@Table(name = "batch_employees_invalid")
+public class InvalidEmployee {
     @Id
-    @GeneratedValue(strategy = GenerationType.SEQUENCE)
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     private String name;
     private String email;
     private String department;
     private BigDecimal salary;
-    private String employeeCode;
+    private String errorMessage;
 }
